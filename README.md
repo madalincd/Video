@@ -4,7 +4,12 @@ Educational explainer video, about 3:19, 1920x1080, 30 fps. Every graphic is dra
 The voiceover is generated locally with the open-source Kokoro TTS model, and each scene's length comes from its audio.
 Subtitles are burned in and synced per sentence.
 
-**Final video:** `output/adipose_tissue.mp4`
+**Final videos**
+- `output/adipose_tissue.mp4`: full version, 3:19, 16:9
+- `output/adipose_tissue_reel45_vertical.mp4`: 45 s reel, 1080x1920
+- `output/adipose_tissue_reel45.mp4`: 45 s reel, 16:9
+
+45 s cut: `python3 src/tts.py --cut reel && python3 src/render.py --cut reel --vertical`. Its narration and cue retiming live in `REEL` in `src/script.py`.
 
 ## Rebuild
 

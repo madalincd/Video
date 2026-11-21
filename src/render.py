@@ -19,7 +19,7 @@ import cairo
 
 sys.path.insert(0, os.path.dirname(__file__))
 from gfx import C, FPS, H, W, clamp, col, font, prog, rrect, text, wrap  # noqa: E402
-from scenes import SCENE_FUNCS, Cue  # noqa: E402
+from scenes import SCENE_FUNCS, Cue, MappedCue  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build")
@@ -27,12 +27,26 @@ FADE = 0.45
 SUB_SIZE = 40
 SUB_MAXW = 1500
 
+# Output geometry. Vertical mode composites the 16:9 scene into a 9:16 frame.
+OUT_W, OUT_H = W, H
+VERTICAL = False
+V_SCALE = 0.62          # 16:9 scene scale inside the vertical frame
+V_CY = 960              # vertical centre of the scene band
+SUB_Y = None            # subtitle box top (None = bottom of frame)
+
+
+def set_vertical():
+    global OUT_W, OUT_H, VERTICAL, SUB_SIZE, SUB_MAXW, SUB_Y, FADE
+    OUT_W, OUT_H, VERTICAL = 1080, 1920, True
+    SUB_SIZE, SUB_MAXW, SUB_Y = 54, 940, 1400
+    FADE = 0.3
+
 
 # ---------------------------------------------------------------- background
 def make_background():
-    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, OUT_W, OUT_H)
     ctx = cairo.Context(surf)
-    g = cairo.RadialGradient(W / 2, H * 0.42, 100, W / 2, H / 2, W * 0.75)
+    g = cairo.RadialGradient(OUT_W / 2, OUT_H * 0.42, 100, OUT_W / 2, OUT_H / 2, max(OUT_W, OUT_H) * 0.75)
     g.add_color_stop_rgb(0, *C["bg0"])
     g.add_color_stop_rgb(1, *C["bg1"])
     ctx.set_source(g)
@@ -67,12 +81,12 @@ def draw_subtitle(ctx, t, chunks):
             lh = SUB_SIZE * 1.3
             w = max(ctx.text_extents(l)[4] for l in lines) + 56
             h = lh * len(lines) + 30
-            y0 = H - 50 - h
-            rrect(ctx, W / 2 - w / 2, y0, w, h, 14)
+            y0 = SUB_Y if SUB_Y is not None else OUT_H - 50 - h
+            rrect(ctx, OUT_W / 2 - w / 2, y0, w, h, 14)
             col(ctx, (0.02, 0.03, 0.05), 0.72 * a)
             ctx.fill()
             for k, l in enumerate(lines):
-                text(ctx, l, W / 2, y0 + 15 + lh * (k + 0.78), SUB_SIZE, C["ink"], a)
+                text(ctx, l, OUT_W / 2, y0 + 15 + lh * (k + 0.78), SUB_SIZE, C["ink"], a)
             return
 
 
@@ -82,18 +96,45 @@ def draw_frame(ctx, bg, scene, t, chunks):
     ctx.paint()
     D = scene["duration"]
     a = min(prog(t, 0, FADE), 1 - prog(t, D - FADE, FADE))
+    cue = MappedCue(scene["cues"], scene["map"]) if "map" in scene else Cue(scene["cues"])
+    fn = SCENE_FUNCS[scene.get("uses", scene["id"])]
+    if VERTICAL:
+        draw_reel_header(ctx, t)
     ctx.push_group()
+    ctx.save()
+    if VERTICAL:
+        ctx.rectangle(0, V_CY - H * V_SCALE / 2 - 40, OUT_W, H * V_SCALE + 80)
+        ctx.clip()
+        ctx.translate(OUT_W / 2, V_CY)
+        ctx.scale(V_SCALE, V_SCALE)
+        ctx.translate(-W / 2, -H / 2)
     ctx.set_line_cap(cairo.LINE_CAP_ROUND)
     ctx.set_line_join(cairo.LINE_JOIN_ROUND)
-    SCENE_FUNCS[scene["id"]](ctx, t, D, Cue(scene["cues"]))
+    fn(ctx, t, D, cue)
+    ctx.restore()
     ctx.pop_group_to_source()
     ctx.paint_with_alpha(a)
     draw_subtitle(ctx, t, chunks)
 
 
+def draw_reel_header(ctx, t):
+    """Persistent title block at the top of the vertical reel."""
+    text(ctx, "ADIPOSE TISSUE", OUT_W / 2, 330, 84, C["ink"])
+    text(ctx, "your body's energy bank", OUT_W / 2, 400, 44, C["accent"], bold=False)
+    col(ctx, C["accent"])
+    ctx.set_line_width(4)
+    ctx.move_to(OUT_W / 2 - 120, 440)
+    ctx.line_to(OUT_W / 2 + 120, 440)
+    ctx.stroke()
+
+
 def render_scene(args):
-    idx, scene = args
-    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
+    idx, scene, vertical, build = args
+    global BUILD
+    BUILD = build
+    if vertical:
+        set_vertical()
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, OUT_W, OUT_H)
     ctx = cairo.Context(surf)
     bg = make_background()
     chunks = subtitle_chunks(ctx, scene["cues"])
@@ -101,7 +142,7 @@ def render_scene(args):
     out = os.path.join(BUILD, "clips", f"{idx:02d}_{scene['id']}.mp4")
     audio = os.path.join(BUILD, "audio", f"{scene['id']}.wav")
     cmd = ["ffmpeg", "-y", "-loglevel", "error",
-           "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
+           "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{OUT_W}x{OUT_H}", "-r", str(FPS), "-i", "-",
            "-i", audio,
            "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
@@ -119,7 +160,7 @@ def render_scene(args):
 
 def stills(timeline, only=None):
     os.makedirs(os.path.join(BUILD, "stills"), exist_ok=True)
-    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
+    surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, OUT_W, OUT_H)
     ctx = cairo.Context(surf)
     bg = make_background()
     for scene in timeline["scenes"]:
@@ -138,14 +179,22 @@ def main():
     ap.add_argument("--stills", action="store_true")
     ap.add_argument("--only")
     ap.add_argument("--jobs", type=int, default=os.cpu_count())
+    ap.add_argument("--cut", choices=["full", "reel"], default="full")
+    ap.add_argument("--vertical", action="store_true", help="1080x1920 output")
     args = ap.parse_args()
+    global BUILD
+    if args.cut == "reel":
+        BUILD = os.path.join(BUILD, "reel")
+    if args.vertical:
+        set_vertical()
     with open(os.path.join(BUILD, "timeline.json")) as f:
         timeline = json.load(f)
     if args.stills:
         stills(timeline, args.only)
         return
     os.makedirs(os.path.join(BUILD, "clips"), exist_ok=True)
-    work = [(i, s) for i, s in enumerate(timeline["scenes"]) if not args.only or s["id"] == args.only]
+    work = [(i, s, args.vertical, BUILD) for i, s in enumerate(timeline["scenes"])
+            if not args.only or s["id"] == args.only]
     work.sort(key=lambda w: -w[1]["duration"])
     with Pool(args.jobs) as pool:
         clips = sorted(pool.map(render_scene, work))
@@ -155,7 +204,8 @@ def main():
     with open(lst, "w") as f:
         for c in clips:
             f.write(f"file '{os.path.basename(c)}'\n")
-    out = os.path.join(BUILD, "adipose_tissue.mp4")
+    name = "adipose_tissue" + ("_reel45" if args.cut == "reel" else "") + ("_vertical" if args.vertical else "")
+    out = os.path.join(BUILD, name + ".mp4")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst,
                     "-c", "copy", "-movflags", "+faststart", out], check=True)
     print("done:", out)

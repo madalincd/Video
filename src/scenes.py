@@ -33,6 +33,28 @@ class Cue:
         return lerp(self.s(i), self.e(i), f)
 
 
+class MappedCue(Cue):
+    """Retime an original scene's cues onto a shorter narration (reel cut)."""
+    NEVER = 1e6
+
+    def __init__(self, cues, mapping):
+        self.c = cues
+        self.m = {int(k): v for k, v in mapping.items()}
+
+    def _t(self, i, which):
+        if i not in self.m:
+            return self.NEVER
+        j, f0, f1 = self.m[i]
+        a, b = self.c[j]["start"], self.c[j]["end"]
+        return lerp(a, b, f0 if which == 0 else f1)
+
+    def s(self, i):
+        return self._t(i, 0)
+
+    def e(self, i):
+        return self._t(i, 1)
+
+
 # ---------------------------------------------------------------- Voronoi tissue
 _vor_cache = {}
 
@@ -334,6 +356,7 @@ def where(ctx, t, D, cue):
     vis_hi = window(t, cue.s(2), D, 0.5, 0.6)
     focus_sub = window(t, cue.s(1), cue.s(2), 0.5, 0.5) + window(t, cue.s(3), cue.s(4), 0.5, 0.5)
     focus_vis = window(t, cue.s(2), cue.s(3), 0.5, 0.5) + window(t, cue.s(4), D, 0.5, 0.6)
+    focus_sub, focus_vis = min(1, focus_sub), min(1, focus_vis)
     dim_sub = 1 - 0.55 * focus_vis
     dim_vis = 1 - 0.55 * focus_sub
 

@@ -100,3 +100,56 @@ TTS_REPLACEMENTS = {
     "type 2": "type two",
     "lipodystrophies": "lipo-dystrophies",
 }
+
+
+# ---------------------------------------------------------------- 45 s reel cut
+# Each reel scene reuses a full-video scene ("uses") with new, shorter narration.
+# "map" retimes the original scene's sentence cues onto the reel sentences:
+#   original_index: (reel_sentence, start_fraction, end_fraction)
+# Original cues that are not mapped never fire.
+REEL = [
+    {
+        "id": "r_hook", "uses": "hook",
+        "sentences": [
+            "About a fifth of your body is fat.",
+            "But adipose tissue isn't just storage.",
+            "It's an active organ with real jobs.",
+        ],
+        "map": {0: (0, 0, 1), 1: (1, 0, 1), 2: (2, 0, 1)},
+    },
+    {
+        "id": "r_what", "uses": "what",
+        "sentences": ["It's built from cells called adipocytes, which store energy as lipids."],
+        "map": {0: (0, 0, 0.55), 1: (0, 0.6, 1)},
+    },
+    {
+        "id": "r_types", "uses": "types",
+        "sentences": [
+            "White fat cells hold one big droplet.",
+            "Brown ones hold many small droplets, and burn energy for heat.",
+            "Beige cells are a mix of both.",
+        ],
+        "map": {0: (0, 0, 0.3), 1: (0, 0, 0.5), 2: (0, 0.3, 1), 3: (1, 0, 0.5), 4: (1, 0.4, 1),
+                5: (2, 0, 0.6), 6: (2, 0.3, 1)},
+    },
+    {
+        "id": "r_where", "uses": "where",
+        "sentences": ["Under the skin, fat insulates.", "Around your organs, it cushions them."],
+        "map": {0: (0, 0, 0.15), 1: (0, 0, 0.5), 3: (0, 0.45, 1), 2: (1, 0, 0.5), 4: (1, 0.4, 1)},
+    },
+    {
+        "id": "r_endocrine", "uses": "endocrine",
+        "sentences": ["It also releases hormones, like leptin, that signal your brain, liver and muscles."],
+        "map": {1: (0, 0, 0.15), 2: (0, 0.08, 0.45), 3: (0, 0.45, 1)},
+    },
+    {
+        "id": "r_wrong", "uses": "wrong",
+        "sentences": ["Too much or too little causes problems.", "The goal is a healthy amount, in the right places."],
+        "map": {0: (0, 0, 0.55), 1: (0, 0.35, 1), 2: (1, 0, 0.3), 3: (1, 0.3, 1)},
+    },
+    {
+        "id": "r_outro", "uses": "outro",
+        "sentences": ["Follow for more body science."],
+        "map": {2: (0, 0, 1)},
+    },
+]

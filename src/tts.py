@@ -15,7 +15,7 @@ import numpy as np
 import soundfile as sf
 
 sys.path.insert(0, os.path.dirname(__file__))
-from script import SCENES, TTS_REPLACEMENTS  # noqa: E402
+from script import REEL, SCENES, TTS_REPLACEMENTS  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build")
@@ -45,13 +45,24 @@ def trim(samples, sr, thresh=0.004):
 
 
 def main():
+    import argparse
     from kokoro_onnx import Kokoro
 
+    global BUILD, SPEED, LEAD, GAP, TAIL
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--cut", choices=["full", "reel"], default="full")
+    args = ap.parse_args()
+    scenes = SCENES
+    if args.cut == "reel":
+        scenes = REEL
+        BUILD = os.path.join(BUILD, "reel")
+        SPEED = float(os.environ.get("SPEED", "0.93"))
+        LEAD, GAP, TAIL = 0.4, 0.4, 0.7
     os.makedirs(os.path.join(BUILD, "audio"), exist_ok=True)
     k = Kokoro(os.path.join(MODEL_DIR, "kokoro-v1.0.onnx"),
                os.path.join(MODEL_DIR, "voices-v1.0.bin"))
     timeline = {"voice": VOICE, "speed": SPEED, "scenes": []}
-    for scene in SCENES:
+    for scene in scenes:
         pieces, cues = [], []
         sr = 24000
         t = LEAD
@@ -70,7 +81,10 @@ def main():
         path = os.path.join(BUILD, "audio", f"{scene['id']}.wav")
         sf.write(path, audio, sr)
         duration = len(audio) / sr
-        timeline["scenes"].append({"id": scene["id"], "duration": round(duration, 3), "cues": cues})
+        entry = {"id": scene["id"], "duration": round(duration, 3), "cues": cues}
+        if "uses" in scene:
+            entry["uses"], entry["map"] = scene["uses"], scene["map"]
+        timeline["scenes"].append(entry)
         print(f"{scene['id']:<10} {duration:6.2f}s  ({len(cues)} sentences)")
     total = sum(s["duration"] for s in timeline["scenes"])
     timeline["total"] = round(total, 3)
